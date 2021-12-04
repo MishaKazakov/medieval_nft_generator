@@ -16,7 +16,7 @@ const {
   ORDERED_TRAITS_LIST: traitsList,
 } = require("./config");
 
-const uniqueCombinationsHashes = new Set();
+const uniqueCombinationsHashes = [];
 
 const createUniqueTokens = () => {
   return Array.from(Array(TOTAL_TOKENS)).map((_, i) => ({
@@ -28,9 +28,21 @@ const createUniqueTokens = () => {
 const createUniqueTraitsCombination = () => {
   const traits = [];
   traitsList.forEach(({ display, type, options }) => {
-    const filteredOptions = options.filter(({ condition }) => {
-      if (condition && condition.length > 0) {
-        return traits.some(({ value }) => condition.includes(value));
+    const filteredOptions = options.filter(({ value }) => {
+      if (value === "PAPER_BAG.png" || value === "plague_mask.png") {
+        return traits[3]?.value.includes("BOLD.png");
+      }
+      if (traits[3]?.value.includes("BOLD.png")&& type ==='Eyes') {
+        return value === 'PAPER_BAG.png' || value === 'plague_mask.png'
+      }
+      if (value.startsWith("c_") || !value.match(/^\w_/)) {
+        return true;
+      }
+      if (traits[1]?.value.toLowerCase().startsWith("b_")) {
+        return value.toLowerCase().startsWith("b_");
+      }
+      if (!traits[1]?.value.toLowerCase().startsWith("b_")) {
+        return !value.toLowerCase().startsWith("b_");
       }
       return true;
     });
@@ -44,20 +56,44 @@ const createUniqueTraitsCombination = () => {
     }
   });
 
-  const traitsHash = hash(JSON.stringify(traits));
-  if (uniqueCombinationsHashes.has(traitsHash)) {
+  if (checkUniq(traits)) {
     return createUniqueTraitsCombination();
   }
-  uniqueCombinationsHashes.add(traitsHash);
+  uniqueCombinationsHashes.push(traits);
   return traits;
 };
+
+function checkUniq(traits) {
+  uniqueCombinationsHashes.some((existingCombination) => {
+    const intersections = existingCombination.reduce(
+      (acc, existingTrait, i) => {
+        if (existingTrait === traits[i]) {
+          acc++;
+        }
+        return acc;
+      }
+    );
+    return intersections > 2;
+  });
+}
+
+function mulberry32(a) {
+  return function () {
+    var t = (a += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const getRandomNumber = mulberry32(1);
 
 const getRandomWeightedOption = (options) => {
   const accWeights = options.reduce(
     (acc, { weight }, i) => acc.concat(weight + (acc[i - 1] || 0)),
     []
   );
-  const rand = Math.random() * accWeights[accWeights.length - 1];
+  const rand = getRandomNumber() * accWeights[accWeights.length - 1];
   const index = accWeights.findIndex((accWeight) => rand < accWeight);
   return options[index];
 };
@@ -104,15 +140,22 @@ const getMetadataFromToken = ({ tokenId, traits }) => {
 };
 
 const getImageFromTraits = async (traits) => {
-  const b64 = await mergeImages(
-    traits.filter(({ image }) => image).map(({ image }) => image),
-    { Canvas, Image }
-  );
-  const image = new Buffer.from(
-    b64.replace(/^data:image\/\w+;base64,/, ""),
-    "base64"
-  );
-  return image;
+  try {
+    const b64 = await mergeImages(
+      traits.filter(({ image }) => image).map(({ image }) => image),
+      { Canvas, Image }
+    );
+
+    const image = new Buffer.from(
+      b64.replace(/^data:image\/\w+;base64,/, ""),
+      "base64"
+    );
+
+    return image;
+  } catch (e) {
+    console.log("traits", traits);
+    throw e;
+  }
 };
 
 const printStats = (tokens) => {
